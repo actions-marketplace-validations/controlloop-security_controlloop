@@ -20,6 +20,8 @@ from controlloop.adapters.claude_code import (
 from controlloop.adapters.claude_code import ClaudeCodeSettingsAdapter
 from controlloop.adapters.claude_code_components import ClaudeCodeComponentsAdapter
 from controlloop.adapters.crewai import CrewAiAdapter
+from controlloop.adapters.devcontainer import DevcontainerAdapter
+from controlloop.adapters.editor_startup import EditorStartupAdapter
 from controlloop.adapters.framework import (
     DetectionResult,
     DiscoveryAdapter,
@@ -32,6 +34,7 @@ from controlloop.adapters.mcp import McpServerAdapter
 from controlloop.adapters.oasf import SUPPORTED_OASF_VERSIONS, OasfAdapter
 from controlloop.adapters.openai_agents import OpenAiAgentsAdapter
 from controlloop.adapters.openapi import OpenApiAdapter
+from controlloop.adapters.pre_commit import PreCommitAdapter
 from controlloop.adapters.runner import run_adapters
 from controlloop.adapters.sandbox import AdapterSandboxViolationError, adapter_sandbox
 from controlloop.adapters.workflows import AgentWorkflowAdapter
@@ -57,6 +60,9 @@ ALL_ADAPTERS: tuple[type[DiscoveryAdapter], ...] = (
     CursorConfigAdapter,
     KiroConfigAdapter,
     RooModesAdapter,
+    DevcontainerAdapter,
+    PreCommitAdapter,
+    EditorStartupAdapter,
 )
 
 #: The vendor documentation date each agent host adapter's recognized
@@ -83,8 +89,10 @@ __all__ = [
     "CrewAiAdapter",
     "CursorConfigAdapter",
     "DetectionResult",
+    "DevcontainerAdapter",
     "DiscoveryAdapter",
     "DiscoveryResult",
+    "EditorStartupAdapter",
     "GeminiSettingsAdapter",
     "IamPolicyAdapter",
     "KiroConfigAdapter",
@@ -93,6 +101,7 @@ __all__ = [
     "OasfAdapter",
     "OpenAiAgentsAdapter",
     "OpenApiAdapter",
+    "PreCommitAdapter",
     "RooModesAdapter",
     "ScanContext",
     "adapter_sandbox",

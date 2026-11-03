@@ -340,6 +340,31 @@ boundary this list summarizes:
   and never read into anything. An `edit` group's `fileRegex` is recorded
   as text, never evaluated. Gap: global modes (`custom_modes.yaml`) live
   outside the repository and are never read.
+- **`DevcontainerAdapter`** (dev containers and VS Code extension
+  recommendations) -- reads `devcontainer.json` (in `.devcontainer/`,
+  one folder below it, or `.devcontainer.json`), `.vscode/extensions.json`,
+  and `*.code-workspace` files as JSON data. Nothing is installed,
+  pulled, or resolved: an extension id and a feature reference are
+  recorded as written. Privacy: a lifecycle command passes through the
+  same redaction as a hook command; feature option values,
+  `containerEnv`, `remoteEnv`, and mounts are never read. Gap: the image,
+  Dockerfile, and Compose file are not opened (a Compose path is recorded
+  as a path), and tasks that run on folder open are not read.
+- **`PreCommitAdapter`** (pre-commit) -- parses `.pre-commit-config.yaml`
+  at the repository root with `yaml.safe_load`; no hook repository is
+  cloned and no dependency installed. Privacy: a repository URL is
+  recorded without its scheme or credentials; a hook's `entry` and `args`
+  pass through the same redaction as a hook command. Gap: what a hook
+  repository publishes and does once installed is outside this
+  repository; other hook managers are not read.
+- **`EditorStartupAdapter`** (editor startup files and JetBrains
+  required plugins) -- records `.nvim.lua`, `.nvimrc`, `.exrc`,
+  `.lvimrc`, `.dir-locals.el`, and `.dir-locals-2.el` at the repository
+  root by path and SHA-256 only; they are never parsed or evaluated, and
+  their content never reaches any output. Parses
+  `.idea/externalDependencies.xml` with a document type declaration
+  refused before parsing, so no entity is expanded or fetched. Gap:
+  user-level editor configuration is never read.
 - **`AgentWorkflowAdapter`** (agent-running GitHub workflows) -- parses
   `.github/workflows/*.yml` with `yaml.safe_load`; a workflow is never run.
   Privacy: a secret is recorded by **name** from `${{ secrets.NAME }}`; an

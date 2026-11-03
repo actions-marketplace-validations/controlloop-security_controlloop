@@ -6,6 +6,60 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Dev containers and VS Code extensions are read.** `devcontainer.json`
+  (in `.devcontainer/`, one folder below it, or `.devcontainer.json`),
+  `.vscode/extensions.json`, and `*.code-workspace` files. Each editor
+  extension and devcontainer feature is a component that is pinned only
+  by an exact version or a digest, so `policy.unpinned-agent-component`
+  reports one that is added, changed, or unpinned; each lifecycle command
+  is a helper command that `policy.agent-hook-command-change` and the
+  script digest track, with `initializeCommand` marked as running on the
+  host. Nothing is installed, pulled, or resolved, and no rule changed.
+  See [Dev containers and VS Code extensions](docs/adapters/devcontainer.md).
+- **pre-commit configuration is read.** `.pre-commit-config.yaml` at the
+  repository root. Each hook repository is a component pinned only by a
+  full commit SHA in `rev`, and each `additional_dependencies` entry is
+  its own component pinned only by an exact version, so
+  `policy.unpinned-agent-component` reports one that is added, moved to
+  a tag, or unversioned, and names the dependency. Local hooks are helper
+  commands that `policy.agent-hook-command-change` and the script digest
+  track. Nothing is cloned, installed, or run, and no rule changed. See
+  [pre-commit](docs/adapters/pre-commit.md).
+- **Editor startup files and JetBrains required plugins are read.**
+  `.nvim.lua`, `.nvimrc`, `.exrc`, `.lvimrc`, `.dir-locals.el`, and
+  `.dir-locals-2.el` at the repository root are recorded by path and
+  SHA-256, never parsed, so `policy.agent-hook-command-change` reports a
+  new one and `policy.hook-script-changed` a changed one. Each plugin in
+  `.idea/externalDependencies.xml` is a component pinned only when its
+  minimum and maximum versions match. No rule changed. See
+  [Editor startup files and JetBrains required plugins](docs/adapters/editor-startup.md).
+- **Team receives these components.** On a Team gate, each editor
+  extension, devcontainer feature, pre-commit hook repository, and
+  pre-commit dependency is sent as a `plugin` named by its id or
+  reference, with its `source_type`, the attributes its adapter
+  recorded, and the `package`, `version`, and `digest` an approved
+  component can constrain; a helper command also sends its `event`. The
+  gate judges the first three kinds as `editor_extension`,
+  `devcontainer_feature`, and `pre_commit_hook`, the types the platform
+  files them under, so an organization approval matches locally as it
+  does on the platform. See [Team envelope](docs/reference/team-envelope.md).
+
+### Changed
+
+- **The macOS arm64 checks and standalone binary run on a self-hosted
+  runner.** GitHub's hosted macOS arm64 runners (`macos-15`, then
+  `macos-26`) were repeatedly out of capacity, so the macOS leg of every
+  check and of the release build now runs on the maintainers' runner
+  labelled `controlloop-macos`, an Apple Silicon macOS virtual machine.
+  A pull request from a fork is routed to GitHub's hosted `macos-26`,
+  and workflows for outside contributors need a maintainer's approval
+  before they run. The binary's
+  platform and architecture are unchanged; the attestation does not
+  record the self-hosted build, so
+  [Standalone binaries](docs/reference/standalone-binaries.md) states it.
+
 ## [0.6.3] - 2026-10-30
 
 The Action is listed on GitHub Marketplace as "ControlLoop Security", and

@@ -25,8 +25,10 @@ from controlloop.adapters import (
     CodexConfigAdapter,
     CrewAiAdapter,
     CursorConfigAdapter,
+    DevcontainerAdapter,
     DiscoveryAdapter,
     DiscoveryResult,
+    EditorStartupAdapter,
     GeminiSettingsAdapter,
     IamPolicyAdapter,
     KiroConfigAdapter,
@@ -35,6 +37,7 @@ from controlloop.adapters import (
     OasfAdapter,
     OpenAiAgentsAdapter,
     OpenApiAdapter,
+    PreCommitAdapter,
     RooModesAdapter,
     ScanContext,
     run_adapters,
@@ -315,6 +318,9 @@ PRIVACY_REQUIRED_ADAPTERS = frozenset(
         "cursor",
         "kiro",
         "roo-code",
+        "devcontainer",
+        "pre-commit",
+        "editor-startup",
     }
 )
 
@@ -1363,6 +1369,198 @@ ROO_FIXTURE = _host_fixture(
     write_privacy=_roo_write_privacy,
 )
 
+# --- Environment: dev containers and VS Code recommendations ---------------
+# Claimed by location; none of these files carries a version field. The
+# privacy case plants a credential in a lifecycle command and values in
+# the environment maps, which the adapter never reads.
+
+_DEVCONTAINER = ".devcontainer/devcontainer.json"
+
+
+def _devcontainer_extensions(extensions: list[str]) -> str:
+    return json.dumps({"customizations": {"vscode": {"extensions": extensions}}})
+
+
+def _devcontainer_write_privacy(tmp_path: Path) -> tuple[str, ...]:
+    _write_json(
+        tmp_path,
+        _DEVCONTAINER,
+        {
+            "containerEnv": {"DEPLOY_TOKEN": _ENV_VALUE},
+            "remoteEnv": {"API_HEADER": _HEADER_VALUE},
+            "postCreateCommand": _BEARER_COMMAND,
+            "initializeCommand": ["sh", "-c", f"login --token={_CREDENTIAL}"],
+        },
+    )
+    return (_CREDENTIAL, _ENV_VALUE, _HEADER_VALUE)
+
+
+DEVCONTAINER_FIXTURE = _host_fixture(
+    name="devcontainer",
+    adapter=DevcontainerAdapter,
+    path=_DEVCONTAINER,
+    positive=_devcontainer_extensions(["ms-python.python@2024.2.1"]),
+    near_miss=".devcontainer/README.md",
+    malformed="{ not valid json at all !!! ",
+    boundary=lambda count: _devcontainer_extensions(
+        [f"acme.extension-{i}@1.0.{i}" for i in range(count)]
+    ),
+    boundary_subtype="plugin",
+    positive_subtypes=["host", "plugin"],
+    write_privacy=_devcontainer_write_privacy,
+)
+
+# --- Environment: pre-commit -------------------------------------------------
+# Claimed by location; `.pre-commit-hooks.yaml`, the file a hook repository
+# publishes its hooks in, is the near miss. The privacy case plants a
+# credential in a local hook's entry and args and in a repository URL.
+
+_PRE_COMMIT = ".pre-commit-config.yaml"
+
+
+def _pre_commit_repos(count: int) -> str:
+    return "repos:\n" + "".join(
+        f"  - repo: https://github.com/acme/hooks-{i}\n"
+        f"    rev: {'a' * 40}\n"
+        "    hooks:\n"
+        "      - id: check\n"
+        for i in range(count)
+    )
+
+
+def _pre_commit_write_privacy(tmp_path: Path) -> tuple[str, ...]:
+    _write_text(
+        tmp_path,
+        _PRE_COMMIT,
+        "repos:\n"
+        f"  - repo: https://deploy:{_HEADER_VALUE}@git.example.test/hooks\n"
+        f"    rev: {'b' * 40}\n"
+        "    hooks:\n"
+        "      - id: check\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: upload\n"
+        "        name: upload\n"
+        f'        entry: "{_BEARER_COMMAND}"\n'
+        "        language: system\n"
+        f"        args: ['--token={_CREDENTIAL}']\n",
+    )
+    return (_CREDENTIAL, _HEADER_VALUE)
+
+
+PRE_COMMIT_FIXTURE = _host_fixture(
+    name="pre-commit",
+    adapter=PreCommitAdapter,
+    path=_PRE_COMMIT,
+    positive=_pre_commit_repos(1),
+    near_miss=".pre-commit-hooks.yaml",
+    malformed="repos: [unclosed\n",
+    boundary=_pre_commit_repos,
+    boundary_subtype="plugin",
+    positive_subtypes=["host", "plugin"],
+    write_privacy=_pre_commit_write_privacy,
+)
+
+# --- Environment: editor startup files and JetBrains required plugins -------
+# Claimed by location. A startup file is never parsed, so it cannot be
+# malformed; the malformed and version-drift cases use the one parsed
+# file, `.idea/externalDependencies.xml`, whose `<project version>` is
+# the IntelliJ project format version (4). The near miss is a startup
+# file below the root, which no editor sources on open.
+
+_EXTERNAL_DEPENDENCIES = ".idea/externalDependencies.xml"
+
+
+def _external_dependencies(plugins: str, version: str = "4") -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<project version="{version}">\n'
+        '  <component name="ExternalDependencies">\n'
+        f"{plugins}"
+        "  </component>\n"
+        "</project>\n"
+    )
+
+
+def _editor_write_positive(tmp_path: Path) -> None:
+    _write_text(tmp_path, ".nvim.lua", "vim.opt.tabstop = 4\n")
+
+
+def _editor_assert_positive(result: DiscoveryResult) -> None:
+    assert sorted(node.subtype or "" for node in result.nodes) == [
+        "helper-command",
+        "host",
+    ]
+    assert result.diagnostics == ()
+
+
+def _editor_write_similar_negative(tmp_path: Path) -> None:
+    _write_text(tmp_path, "config/.nvim.lua", "vim.opt.tabstop = 4\n")
+
+
+def _editor_write_malformed(tmp_path: Path) -> None:
+    _write_text(tmp_path, _EXTERNAL_DEPENDENCIES, "<project><component name=")
+
+
+def _editor_write_boundary(tmp_path: Path) -> None:
+    _write_text(
+        tmp_path,
+        _EXTERNAL_DEPENDENCIES,
+        _external_dependencies(
+            "".join(
+                f'    <plugin id="com.acme.p{i}" min-version="1.0" '
+                'max-version="1.0" />\n'
+                for i in range(_BOUNDARY_ENTRY_COUNT)
+            )
+        ),
+    )
+
+
+def _editor_assert_boundary(result: DiscoveryResult) -> None:
+    plugins = [node for node in result.nodes if node.subtype == "plugin"]
+    assert len(plugins) == _BOUNDARY_ENTRY_COUNT
+    assert result.diagnostics == ()
+
+
+def _editor_write_version(version: str) -> Callable[[Path], None]:
+    def write(tmp_path: Path) -> None:
+        _write_text(
+            tmp_path,
+            _EXTERNAL_DEPENDENCIES,
+            _external_dependencies('    <plugin id="com.acme.p" />\n', version),
+        )
+
+    return write
+
+
+def _editor_write_privacy(tmp_path: Path) -> tuple[str, ...]:
+    _write_text(
+        tmp_path,
+        ".nvim.lua",
+        f'vim.env.DEPLOY_TOKEN = "{_ENV_VALUE}"\nvim.fn.system("{_BEARER_COMMAND}")\n',
+    )
+    _write_text(
+        tmp_path,
+        ".dir-locals.el",
+        f'((nil . ((eval . (setenv "API_TOKEN" "{_CREDENTIAL}")))))\n',
+    )
+    return (_CREDENTIAL, _ENV_VALUE)
+
+
+EDITOR_STARTUP_FIXTURE = ConformanceFixture(
+    adapter_name="editor-startup",
+    make_adapter=EditorStartupAdapter,
+    write_positive=_editor_write_positive,
+    assert_positive=_editor_assert_positive,
+    write_similar_negative=_editor_write_similar_negative,
+    write_malformed=_editor_write_malformed,
+    write_boundary=_editor_write_boundary,
+    assert_boundary=_editor_assert_boundary,
+    write_version_drift=_editor_write_version("5"),
+    write_older_version_drift=_editor_write_version("3"),
+    write_privacy=_editor_write_privacy,
+)
+
 ALL_FIXTURES: tuple[ConformanceFixture, ...] = (
     MCP_FIXTURE,
     OPENAPI_FIXTURE,
@@ -1380,4 +1578,7 @@ ALL_FIXTURES: tuple[ConformanceFixture, ...] = (
     CURSOR_FIXTURE,
     KIRO_FIXTURE,
     ROO_FIXTURE,
+    DEVCONTAINER_FIXTURE,
+    PRE_COMMIT_FIXTURE,
+    EDITOR_STARTUP_FIXTURE,
 )
