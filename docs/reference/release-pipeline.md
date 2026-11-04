@@ -98,8 +98,10 @@ publishing a release is always a deliberate, human act.
 10. **Publish the container image** -- only after stage 7, builds the
     image from the repository's `Dockerfile`, runs
     `scripts/container-smoke.sh` against it (non-root, no build toolchain,
-    a real scan with networking disabled), scans it with Trivy -- a
-    critical vulnerability fails the job and nothing is pushed -- then
+    a real scan with networking disabled), scans it with Trivy (a pinned
+    version from Trivy's GitHub release, checked against a recorded
+    SHA-256) -- a critical vulnerability fails the job and nothing is
+    pushed -- then
     builds the `linux/amd64` and `linux/arm64` image, pushes it to
     `ghcr.io/controlloop-security/controlloop` tagged with the exact
     version, and attests the pushed digest with the same keyless
@@ -153,7 +155,13 @@ the cause and re-run only that job; nothing earlier needs to run again.
   binaries](standalone-binaries.md) and [Release
   verification](release-verification.md) for the full disclosure.
 - **No local or developer-machine publication of any kind.** Every step
-  above runs only on GitHub-hosted Actions runners.
+  above runs as a GitHub Actions job from the tagged commit, and every
+  publishing, attesting, and signing-in step runs on a GitHub-hosted
+  runner. One build step does not: the macOS arm64 leg of `verify` and
+  `build-binaries` runs on the maintainers' self-hosted runner
+  (`controlloop-macos`, a macOS virtual machine), because GitHub's
+  hosted macOS arm64 runners were repeatedly out of capacity. See
+  [Supported platforms](supported-platforms.md).
 
 ## Version consistency
 
